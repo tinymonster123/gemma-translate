@@ -1,0 +1,274 @@
+:host {
+  all: initial;
+  display: block;
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 2147483647;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.gt-panel {
+  width: 340px;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  background: #1c1c1e;
+  color: #f5f5f7;
+  border: 1px solid #3a3a3c;
+  border-radius: 18px;
+  padding: 14px;
+  font-family:
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: gt-panel-in 0.16s ease-out;
+}
+
+@keyframes gt-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.gt-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.gt-panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.gt-panel-subtitle {
+  margin-top: 2px;
+  font-size: 9.5px;
+  color: #8e8e93;
+}
+
+.gt-panel-close {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: #2c2c2e;
+  color: #8e8e93;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.gt-panel-close:hover {
+  color: #f5f5f7;
+  background: #3a3a3c;
+}
+
+.gt-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gt-pill {
+  flex: 1;
+  min-width: 0;
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  border-radius: 12px;
+  padding: 10px 11px;
+}
+
+.gt-pill-main {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gt-pill-sub {
+  margin-top: 3px;
+  font-size: 9.5px;
+  color: #8e8e93;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gt-to {
+  color: #8e8e93;
+  font-size: 14px;
+  flex: none;
+}
+
+.gt-target {
+  position: relative;
+  padding: 0;
+}
+
+.gt-target select {
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: #f5f5f7;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 12px 28px 12px 11px;
+  border-radius: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.gt-target select:disabled {
+  color: #8e8e93;
+  cursor: default;
+}
+.gt-target select option {
+  background: #2c2c2e;
+  color: #f5f5f7;
+}
+
+.gt-chev {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8e8e93;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.gt-service {
+  margin-top: 12px;
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.gt-service-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gt-label {
+  color: #8e8e93;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.gt-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.gt-service-row .gt-chev {
+  position: static;
+  transform: none;
+}
+
+.gt-gem {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, #4f7cf7, #a855f7);
+  display: inline-block;
+  flex: none;
+}
+
+.gt-hint {
+  color: #6e6e73;
+  font-size: 10px;
+  margin-top: 7px;
+}
+
+.gt-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 11px 2px 0;
+  min-height: 16px;
+  color: #8e8e93;
+  font-size: 10.5px;
+}
+
+.gt-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #8e8e93;
+  font: inherit;
+  font-size: 10.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.gt-link:hover {
+  color: #f5f5f7;
+}
+
+.gt-error-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff2d6f;
+  flex: none;
+}
+
+.gt-cta {
+  margin-top: 11px;
+  width: 100%;
+  border: 0;
+  border-radius: 13px;
+  background: #ff2d6f;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 8px 22px rgba(255, 45, 111, 0.25);
+  cursor: pointer;
+  transition:
+    filter 0.15s,
+    opacity 0.15s;
+}
+
+.gt-cta:hover {
+  filter: brightness(1.06);
+}
+
+.gt-cta kbd {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.8;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  padding: 2px 6px;
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Slow Death of the Free Lunch — fixture</title>
+<style>
+  body { max-width: 720px; margin: 0 auto; padding: 40px 24px 120px;
+         font: 16px/1.7 Georgia, "Times New Roman", serif; color: #1a1a1a; background: #fff; }
+  h1 { font-size: 30px; line-height: 1.25; margin: 0 0 6px; }
+  h2 { font-size: 21px; margin: 36px 0 10px; }
+  .byline { color: #777; font-size: 14px; font-style: italic; margin-bottom: 28px; }
+  nav ul { display: flex; gap: 16px; list-style: none; padding: 0; margin: 0 0 32px; font-size: 14px; }
+  nav a { color: #06c; text-decoration: none; }
+  pre { background: #f5f5f5; padding: 14px; border-radius: 4px; overflow-x: auto; font-size: 13px; }
+  .dark { background: #14161a; color: #dfe3ea; padding: 28px 24px; border-radius: 8px; margin-top: 40px; }
+  .dark h2 { color: #fff; }
+  table { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 15px; }
+  th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; }
+</style>
+</head>
+<body>
+
+<nav>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/archive">Archive</a></li>
+    <li><a href="/about">About the author</a></li>
+  </ul>
+</nav>
+
+<h1>The Slow Death of the Free Lunch</h1>
+<p class="byline">By a correspondent, March 2026</p>
+
+<p>For most of computing history, programmers could count on a simple bargain: write the same code, wait eighteen months, and it would run twice as fast. That bargain is over.</p>
+
+<p>What replaced it is harder to talk about, because the improvement no longer shows up as a single number. It shows up in memory hierarchy, in cache locality, in how well a compiler can reason about the shape of your data.</p>
+
+<h2>Where the transistors went</h2>
+
+<p>The end of Dennard scaling meant that shrinking a transistor no longer reduced its power density. Chipmakers kept the clock flat and spent the transistor budget on parallelism instead. Four cores became sixteen, then sixty-four, and the software world slowly discovered that it did not know how to use them.</p>
+
+<h2>A worked example</h2>
+
+<p>The following snippet is deliberately simple. It sums an array in the most obvious way possible, and on a modern machine it is bound not by arithmetic but by how often the data has to leave the cache.</p>
+
+<pre><code>let total = 0;
+for (let i = 0; i &lt; data.length; i++) {
+  total += data[i];
+}</code></pre>
+
+<table>
+  <tr><th>Assumption</th><th>Reality</th></tr>
+  <tr><td>Clock speed doubles</td><td>It has been flat since 2005</td></tr>
+  <tr><td>Memory is fast</td><td>Memory is the bottleneck</td></tr>
+</table>
+
+<div class="dark">
+  <h2>The uncomfortable part</h2>
+  <p>Performance work has become a specialty rather than a default expectation. The tools got better, but the mental model you need to use them got considerably stranger.</p>
+  <p>这一段是中文，应该被自动跳过，因为目标语言就是中文。</p>
+</div>
+
+<div>This sentence sits in a bare div with no element children, the kind of markup that shows up constantly on documentation sites.</div>
+
+</body>
+</html>

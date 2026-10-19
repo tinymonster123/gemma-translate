@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>gemma-translate · 架构与时序（悬浮面板版）</title>
+<style>
+  :root{
+    --ink:#1e293b;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --bg:#f7f8f9;
+    --page:#0f766e;
+    --sw:#b45309;
+    --off:#4338ca;
+    --eng:#6d28d9;
+    --src:#475569;
+    --panel:#db2777;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"PingFang SC","Hiragino Sans GB","Noto Sans SC",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;font-size:14px;}
+  .mono,code{font-family:"SF Mono",Menlo,Consolas,monospace}
+  .canvas{width:1320px;margin:0 auto;position:relative;background:var(--bg);overflow:hidden}
+
+  /* ───────────────────────── 架构图 ───────────────────────── */
+  .arch{height:900px}
+  .a-title{position:absolute;left:40px;top:24px;width:470px}
+  .a-title h1{margin:0;font-size:23px;font-weight:700;letter-spacing:-.01em}
+  .a-title h1 span{font-size:14px;font-weight:500;color:var(--muted);margin-left:8px}
+  .a-title p{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+
+  .ubox{position:absolute;display:flex;gap:10px;align-items:center;
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:0 14px;
+    box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 22px rgba(15,23,42,.04)}
+  .ubox-ic{font-size:20px;line-height:1}
+  .ubox b{display:block;font-size:13.5px;font-weight:600}
+  .ubox small{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+
+  .ext{position:absolute;background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 22px rgba(15,23,42,.04)}
+  .ext b{display:block;font-size:12.5px;font-weight:650;color:var(--src)}
+  .ext small{display:block;font-size:10.5px;color:var(--muted);margin-top:3px}
+
+  .arrow-v,.arrow-h{position:absolute;--c:#475569;z-index:1}
+  .arrow-v{width:2px;background:var(--c)}
+  .arrow-v::after{content:"";position:absolute;left:-5px;bottom:-8px;
+    border:6px solid transparent;border-top:9px solid var(--c)}
+  .arrow-h{height:2px;background:var(--c)}
+  .arrow-h::after{content:"";position:absolute;right:-9px;top:-5px;
+    border:6px solid transparent;border-left:9px solid var(--c)}
+
+  .badge{position:absolute;width:20px;height:20px;border-radius:50%;
+    background:#0f172a;color:#fff;font-size:11px;font-weight:650;
+    display:flex;align-items:center;justify-content:center;z-index:6;
+    box-shadow:0 0 0 3px var(--bg)}
+  .badge.inline{position:static;display:inline-flex;width:16px;height:16px;font-size:9.5px;
+    margin-right:4px;vertical-align:-3px;box-shadow:none}
+
+  .card{position:absolute;background:#fff;border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 28px rgba(15,23,42,.05);--accent:var(--page)}
+  .card::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;border-radius:14px 14px 0 0;background:var(--accent)}
+  .ctx{position:absolute;left:16px;top:15px;font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--muted)}
+  .file{position:absolute;left:16px;top:31px;font-family:"SF Mono",Menlo,Consolas,monospace;
+    font-size:15.5px;font-weight:650;color:var(--ink)}
+  .file .tag{font-family:"PingFang SC",system-ui,sans-serif;font-size:10px;font-weight:600;
+    color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,#fff);
+    border:1px solid color-mix(in srgb,var(--accent) 22%,#fff);
+    border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:2px}
+
+  .inner{position:absolute;background:#fbfcfd;border:1px solid #e8edf3;border-radius:10px;padding:9px 11px}
+  .inner-t{font-size:10.5px;font-weight:650;color:var(--muted);letter-spacing:.04em;margin-bottom:5px}
+  .role{position:relative;padding-left:12px;font-size:11.5px;line-height:1.52;color:#334155;margin:0 0 4px}
+  .role:last-child{margin-bottom:0}
+  .role::before{content:"•";position:absolute;left:1px;top:0;color:var(--accent)}
+  .role .k{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:10.7px;color:#0f172a}
+  .sub{font-size:10.5px;color:var(--muted);line-height:1.5;margin:2px 0 0}
+  .foot{position:absolute;left:16px;right:16px;font-size:10.5px;color:var(--muted);line-height:1.4}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
+
+  .mini-arrow{position:absolute;width:2px;background:var(--page);z-index:1}
+  .mini-arrow::after{content:"";position:absolute;left:-4px;bottom:-7px;
+    border:5px solid transparent;border-top:7px solid var(--page)}
+
+  .bus{position:absolute;background:#1e293b;border-radius:12px;color:#e2e8f0;
+    box-shadow:0 12px 30px rgba(15,23,42,.18);overflow:hidden}
+  .bus-title{position:absolute;left:16px;top:9px;font-size:11px;font-weight:600;letter-spacing:.02em}
+  .bus-title span{font-weight:400;color:#94a3b8;margin-left:8px}
+  .chip{position:absolute;top:34px;height:22px;display:flex;align-items:center;
+    font-family:"SF Mono",Menlo,Consolas,monospace;font-size:10.5px;
+    background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);
+    border-radius:6px;padding:0 8px;color:#e2e8f0;white-space:nowrap}
+  .tap{position:absolute;width:2px;background:var(--c);z-index:1}
+  .tap::after{content:"";position:absolute;left:-5px;bottom:-8px;
+    border:6px solid transparent;border-top:9px solid var(--c)}
+  .tap::before{content:"";position:absolute;left:-3px;top:0;width:8px;height:8px;border-radius:50%;
+    background:var(--c)}
+
+  .fact{position:absolute;height:110px;background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:13px 14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .fact b{display:block;font-size:12.5px;font-weight:650;margin-bottom:5px}
+  .fact p{margin:0;font-size:10.8px;line-height:1.55;color:#475569}
+  .fact .mono{font-size:10.2px}
+
+  /* ───────────────────────── 时序图 ───────────────────────── */
+  .seq{padding-bottom:36px}
+  .doc-head{padding:26px 40px 4px;display:flex;align-items:flex-end;justify-content:space-between}
+  .doc-head h1{margin:0;font-size:23px;font-weight:700;letter-spacing:-.01em}
+  .doc-head h1 span{font-size:14px;font-weight:500;color:var(--muted);margin-left:8px}
+  .doc-head p{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+  .legend{font-size:10.5px;color:var(--muted);text-align:right;line-height:1.7}
+  .legend i{display:inline-block;width:22px;height:0;border-top:2px solid #64748b;vertical-align:4px;margin-right:5px}
+  .legend i.dash{border-top-style:dashed}
+
+  .seq-body{position:relative;width:1240px;margin:0 auto;padding-top:88px}
+  .lifeline{position:absolute;top:88px;bottom:62px;width:0;border-left:2px dashed #cbd5e1;z-index:0}
+  .time-axis{position:absolute;left:-32px;top:92px;writing-mode:vertical-rl;
+    font-size:10px;color:#94a3b8;letter-spacing:.18em;z-index:0}
+
+  .phead{position:absolute;top:0;width:188px;transform:translateX(-50%);background:#fff;
+    border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:10px;
+    padding:7px 10px;z-index:3;box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 20px rgba(15,23,42,.04)}
+  .phead b{display:block;font-size:12.5px;font-weight:650;white-space:nowrap}
+  .phead small{display:block;font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}
+
+  .phase{position:relative;z-index:1;height:30px;margin:10px 0 4px;padding:0 12px;
+    display:flex;align-items:center;background:#eaeff5;border-radius:7px;
+    font-size:11.5px;font-weight:650;color:#475569;letter-spacing:.02em}
+
+  .msg{position:relative;height:34px;z-index:2}
+  .msg.self{height:42px}
+  .msg .line{position:absolute;top:25px;height:0;border-top:2px solid var(--c);
+    left:calc((var(--a) + .5) * 100% / 6);
+    width:calc((var(--b) - var(--a)) * 100% / 6)}
+  .msg .line::after{content:"";position:absolute;right:-1px;top:-7px;
+    border:6px solid transparent;border-left:7px solid var(--c)}
+  .msg.left .line::after{right:auto;left:-1px;
+    border-left:6px solid transparent;border-right:7px solid var(--c)}
+  .msg.dash .line{border-top-style:dashed}
+  .msg .lbl{position:absolute;top:1px;
+    left:calc((var(--a) + var(--b) + 1) * 50% / 6);
+    transform:translateX(-50%);white-space:nowrap;
+    font-size:11.5px;line-height:1.5;color:#334155;
+    background:var(--bg);padding:0 6px;border-radius:4px;z-index:3}
+  .msg .lbl .mono{font-size:10.7px}
+  .msg.self .loop{position:absolute;top:17px;
+    left:calc((var(--a) + .5) * 100% / 6);
+    width:28px;height:15px;border:2px solid var(--c);border-left:0;border-radius:0 4px 4px 0}
+  .msg.self .loop::after{content:"";position:absolute;left:-8px;top:-6px;
+    border:6px solid transparent;border-right:7px solid var(--c)}
+  .msg.self .lbl{left:calc((var(--a) + .5) * 100% / 6 + 38px);transform:none}
+
+  .seq-note{margin-top:18px;position:relative;z-index:3;background:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:11px 14px;font-size:11.5px;line-height:1.65;color:#475569}
+  .seq-note b{color:#1e293b}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     架构图
+     ════════════════════════════════════════════════════════════════ -->
+<section id="architecture" class="canvas arch">
+
+  <div class="a-title">
+    <h1>gemma-translate <span>架构</span></h1>
+    <p>点图标 → 页面内 Shadow DOM 悬浮面板 → 本地 Gemma 逐段翻译；模型不在包里</p>
+  </div>
+
+  <!-- 用户 -->
+  <div class="ubox" style="left:550px;top:26px;width:230px;height:64px">
+    <div class="ubox-ic">👆</div>
+    <div><b>点插件图标</b><small>工具栏 · Alt+Shift+U</small></div>
+  </div>
+  <div class="arrow-v" style="left:664px;top:90px;height:60px"></div>
+  <div class="badge" style="left:672px;top:108px">1</div>
+
+  <!-- 模型源 -->
+  <div class="ext" style="left:800px;top:26px;width:150px;height:64px">
+    <b>hf-mirror.com</b><small>模型 ≈ 3.1 GB</small>
+  </div>
+  <div class="arrow-h" style="left:952px;top:58px;width:46px"></div>
+  <div class="ext" style="left:1000px;top:26px;width:170px;height:64px">
+    <b>Cache API</b><small>cacheKey = gemma-translate</small>
+  </div>
+  <div class="arrow-v" style="left:1084px;top:90px;height:60px"></div>
+  <div class="badge" style="left:1092px;top:108px">5</div>
+  <div style="position:absolute;left:930px;top:103px;width:140px;text-align:right;
+    font-size:10.5px;color:var(--muted);line-height:1.4">首次：下载并写入缓存<br>之后：离线命中</div>
+
+  <!-- ── 页面上下文 ── -->
+  <div class="card" style="left:40px;top:150px;width:370px;height:460px;--accent:var(--page)">
+    <div class="ctx">网页 · WINDOW 上下文 · 隔离世界</div>
+    <div class="file">page.js + Panel.tsx<span class="tag">按需注入</span></div>
+
+    <div class="inner" style="left:16px;top:70px;width:338px;height:214px">
+      <div class="inner-t">职责</div>
+      <div class="role"><span class="k">PageTranslationSession</span>：probe / start / stop / restore</div>
+      <div class="role"><span class="k">collectBlocks()</span>：p / li / h1–h6 / td / 裸文本 div</div>
+      <div class="role">跳过 <span class="k">pre</span> / <span class="k">code</span> / <span class="k">[data-gt]</span>；已是目标语言的段也跳过</div>
+      <div class="role"><span class="k">mountHolder()</span>：段落下方（或 li/td 内部）插占位</div>
+      <div class="role">逐段串行 <span class="k">translate</span>；<span class="k">chunk</span> 到达即写占位</div>
+      <div class="role">面板关闭时，浮标持续显示进度 / 还原入口</div>
+    </div>
+
+    <div class="inner" style="left:16px;top:294px;width:338px;height:100px">
+      <div class="inner-t">悬浮面板 · OPEN SHADOW ROOT</div>
+      <div class="sub">React <span class="k">Panel</span> 直接订阅 session，不走跨上下文消息</div>
+      <div class="sub">语言 pill · 目标语言 select · 服务行 · 大 CTA</div>
+      <div class="sub">样式走 <span class="k">adoptedStyleSheets</span>，页面 CSP 进不来</div>
+    </div>
+
+    <div class="foot" style="top:412px">
+      <span class="dot" style="background:var(--page)"></span>
+      不做推理 · 只碰 DOM、会话状态与消息
+      <span style="display:inline-block;margin-left:14px">
+        <span class="badge inline">6</span>插译文
+      </span>
+      <span style="display:inline-block;margin-left:10px">
+        <span class="badge inline">7</span>还原
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Service Worker ── -->
+  <div class="card" style="left:480px;top:150px;width:370px;height:460px;--accent:var(--sw)">
+    <div class="ctx">扩展后台 · MV3 SERVICE WORKER</div>
+    <div class="file">background.js</div>
+
+    <div class="inner" style="left:16px;top:70px;width:338px;height:208px">
+      <div class="inner-t">职责</div>
+      <div class="role"><span class="k">action.onClicked</span> → <span class="k">insertCSS</span> + <span class="k">executeScript</span>(page.js)</div>
+      <div class="role"><span class="k">tabs.sendMessage</span> { to:'page', type:'panel:toggle' }</div>
+      <div class="role">监听器没挂上时 30 × 80ms 重试，不等固定 sleep</div>
+      <div class="role"><span class="k">ensureOffscreen()</span>：create + ping 到通 + config 转发</div>
+      <div class="role">注入失败（chrome://、商店页）→ 角标 ×</div>
+      <div class="role">测试缝 <span class="k">__GT_TOGGLE_PANEL(tabId)</span> 走同一条路径</div>
+    </div>
+
+    <div class="inner" style="left:16px;top:288px;width:338px;height:106px">
+      <div class="inner-t">chrome.storage.local</div>
+      <div class="sub"><span class="k">modelHost</span>：开发 / 测试指向伪 HF 服务</div>
+      <div class="sub"><span class="k">targetLanguage</span>：上次选择的目标语言</div>
+      <div class="sub">生产留空 → 默认 https://hf-mirror.com/</div>
+    </div>
+
+    <div class="foot" style="top:410px">
+      <span class="dot" style="background:var(--sw)"></span>
+      会被空闲回收 · 刻意不 import 任何模型 / 库代码
+    </div>
+  </div>
+
+  <!-- ── Offscreen ── -->
+  <div class="card" style="left:920px;top:150px;width:370px;height:460px;--accent:var(--off)">
+    <div class="ctx">扩展后台 · OFFSCREEN DOCUMENT（常驻）</div>
+    <div class="file">offscreen.js</div>
+
+    <div class="inner" style="left:16px;top:70px;width:338px;height:104px">
+      <div class="inner-t">消息路由</div>
+      <div class="role">收 <span class="k">ping / config / ensure / translate</span></div>
+      <div class="role">逐文件进度聚合 → <span class="k">status</span> 广播</div>
+      <div class="role"><span class="k">chunk</span> 逐 token 广播（流式）</div>
+    </div>
+
+    <div class="inner" style="left:16px;top:184px;width:338px;height:152px">
+      <div class="inner-t">engine · 模型持有者</div>
+      <div class="role"><span class="k">pipeline('text-generation', MODEL_ID, {webgpu, q4f16})</span></div>
+      <div class="role"><span class="k">splitText()</span>：≤600 字，逐块生成再拼接</div>
+      <div class="role">greedy · <span class="k">repetition_penalty 1.15</span> · <span class="k">no_repeat_ngram 6</span></div>
+      <div class="role"><span class="k">TextStreamer</span> 回调 → 广播 chunk</div>
+    </div>
+
+    <div class="inner" style="left:16px;top:346px;width:338px;height:80px">
+      <div class="inner-t">资源</div>
+      <div class="sub">wasm：<span class="k">chrome-extension://&lt;id&gt;/ort/</span> · 26.9 MB（包内）</div>
+      <div class="sub">模型：hf-mirror → Cache API（不进包）</div>
+    </div>
+
+    <div class="foot" style="top:436px">
+      <span class="dot" style="background:var(--off)"></span>
+      常驻 · 无界面 · 全浏览器共享同一份模型
+    </div>
+  </div>
+
+  <!-- 总线 -->
+  <div class="bus" style="left:40px;top:660px;width:1250px;height:64px">
+    <div class="bus-title">chrome.runtime.sendMessage · 广播总线
+      <span>background / page / offscreen 都能收到</span></div>
+    <div class="chip" style="left:28px">{ to:'bg', type:'engine:ensure' }</div>
+    <div class="chip" style="left:300px">{ to:'page', type:'panel:toggle' }</div>
+    <div class="chip" style="left:552px">{ to:'engine', type:'ping' | 'config' | 'ensure' }</div>
+    <div class="chip" style="left:884px">translate → · status ← · chunk ←</div>
+  </div>
+
+  <div class="tap" style="left:224px;top:610px;height:50px;--c:var(--page)"></div>
+  <div class="tap" style="left:664px;top:610px;height:50px;--c:var(--sw)"></div>
+  <div class="tap" style="left:1104px;top:610px;height:50px;--c:var(--off)"></div>
+  <div class="badge" style="left:214px;top:624px">2</div>
+  <div class="badge" style="left:654px;top:624px">3</div>
+  <div class="badge" style="left:1094px;top:624px">4</div>
+
+  <!-- 约束 -->
+  <div class="fact" style="left:40px;top:760px;width:295px">
+    <b>模型不进扩展包</b>
+    <p><span class="mono">chrome-extension://</span> 读 ≥1 GiB 会让 Chrome 主进程
+    <span class="mono">EXC_BREAKPOINT</span>。实测：1000 MiB 正常，1024 MiB（2³⁰）崩。</p>
+  </div>
+  <div class="fact" style="left:355px;top:760px;width:295px">
+    <b>推理不进 Service Worker</b>
+    <p>HTML 规范禁止 SW 里动态 <span class="mono">import()</span>，而 ORT 的 WebGPU EP
+    依赖它。唯一可用的常驻后台是 offscreen document。</p>
+  </div>
+  <div class="fact" style="left:670px;top:760px;width:295px">
+    <b>offscreen 没有 chrome.storage</b>
+    <p>它只拿到很有限的扩展 API。所以 <span class="mono">modelHost</span> 必须由
+    SW 读出来，再用 <span class="mono">config</span> 消息转发进去。</p>
+  </div>
+  <div class="fact" style="left:985px;top:760px;width:295px">
+    <b>wasm 走扩展包稳定路径</b>
+    <p>26.9 MB 从 <span class="mono">/ort/</span> 读取，远低于 1 GiB 那条线；
+    不从 CDN 拉，离线、CSP、网络都可控。</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════
+     时序图
+     ════════════════════════════════════════════════════════════════ -->
+<section id="sequence" class="canvas seq">
+  <div class="doc-head">
+    <div>
+      <h1>一次点击的完整时序 <span>页面内悬浮面板</span></h1>
+      <p>首次：拉起引擎 → 下载 3.1 GB 进 Cache API → 逐段翻译；之后运行跳过下载</p>
+    </div>
+    <div class="legend">
+      <div><i></i>实线：调用 / 返回</div>
+      <div><i class="dash"></i>虚线：广播 / 异步回调</div>
+    </div>
+  </div>
+
+  <div class="seq-body">
+    <div class="time-axis">时间</div>
+
+    <!-- 生命线 -->
+    <div class="lifeline" style="left:8.3333%"></div>
+    <div class="lifeline" style="left:25%"></div>
+    <div class="lifeline" style="left:41.6667%"></div>
+    <div class="lifeline" style="left:58.3333%"></div>
+    <div class="lifeline" style="left:75%"></div>
+    <div class="lifeline" style="left:91.6667%"></div>
+
+    <!-- 参与者 -->
+    <div class="phead" style="left:8.3333%;--accent:var(--src)">
+      <b>用户</b><small>点图标 · 面板 · 浮标</small>
+    </div>
+    <div class="phead" style="left:25%;--accent:var(--page)">
+      <b>页面 · page.js</b><small>React 面板 + Session</small>
+    </div>
+    <div class="phead" style="left:41.6667%;--accent:var(--sw)">
+      <b>background.js</b><small>MV3 Service Worker</small>
+    </div>
+    <div class="phead" style="left:58.3333%;--accent:var(--off)">
+      <b>offscreen.js</b><small>Offscreen Document</small>
+    </div>
+    <div class="phead" style="left:75%;--accent:var(--eng)">
+      <b>engine.js</b><small>transformers.js + ORT</small>
+    </div>
+    <div class="phead" style="left:91.6667%;--accent:var(--src)">
+      <b>资源</b><small>Cache API · /ort/ wasm</small>
+    </div>
+
+    <!-- ① 打开面板 -->
+    <div class="phase">① 点图标 → 注入 → 打开面板</div>
+
+    <div class="msg" style="--a:0;--b:2;--c:#475569">
+      <span class="lbl">点插件图标（Alt+Shift+U）</span><span class="line"></span>
+    </div>
+    <div class="msg" style="--a:2;--b:1;--c:var(--sw)">
+      <span class="lbl"><span class="mono">insertCSS(page-style.css) + executeScript(page.js)</span></span><span class="line"></span>
+    </div>
+    <div class="msg" style="--a:2;--b:1;--c:var(--sw)">
+      <span class="lbl"><span class="mono">{ to:'page', type:'panel:toggle' }</span>（30×80ms 重试）</span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:1;--c:var(--page)">
+      <span class="lbl">建 Shadow DOM + React root；Panel 订阅 session；<span class="mono">probe()</span> 语言 / 段数</span><span class="loop"></span>
+    </div>
+    <div class="msg left" style="--a:0;--b:1;--c:var(--page)">
+      <span class="lbl">面板出现：英语 → 简体中文 · 20 段 · 本地 Gemma 4</span><span class="line"></span>
+    </div>
+
+    <!-- ② 点翻译 -->
+    <div class="phase">② 点「翻译」→ 拉起引擎（幂等）</div>
+
+    <div class="msg" style="--a:0;--b:1;--c:#475569">
+      <span class="lbl">点 <span class="mono">.gt-cta</span></span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:1;--c:var(--page)">
+      <span class="lbl"><span class="mono">session.start(target)</span> · 状态 loading</span><span class="loop"></span>
+    </div>
+    <div class="msg" style="--a:1;--b:2;--c:var(--page)">
+      <span class="lbl"><span class="mono">{ to:'bg', type:'engine:ensure' }</span></span><span class="line"></span>
+    </div>
+    <div class="msg" style="--a:2;--b:3;--c:var(--sw)">
+      <span class="lbl"><span class="mono">hasDocument()</span> ? 复用 : <span class="mono">createDocument()</span></span><span class="line"></span>
+    </div>
+    <div class="msg dash" style="--a:2;--b:3;--c:var(--sw)">
+      <span class="lbl"><span class="mono">ping</span> 循环：监听器没挂上 → sendMessage reject</span><span class="line"></span>
+    </div>
+    <div class="msg dash left" style="--a:2;--b:3;--c:var(--off)">
+      <span class="lbl"><span class="mono">{ ok, state, ready }</span></span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:2;--c:var(--sw)">
+      <span class="lbl">读 <span class="mono">storage.local.modelHost</span></span><span class="loop"></span>
+    </div>
+    <div class="msg" style="--a:2;--b:3;--c:var(--sw)">
+      <span class="lbl"><span class="mono">{ to:'engine', type:'config', modelHost }</span></span><span class="line"></span>
+    </div>
+    <div class="msg left" style="--a:1;--b:2;--c:var(--sw)">
+      <span class="lbl"><span class="mono">{ ok:true }</span> · offscreen 已就绪</span><span class="line"></span>
+    </div>
+
+    <!-- ③ 加载模型 -->
+    <div class="phase">③ 加载模型 · 首次下载 3.1 GB（≈15 min @ 3.53 MB/s）</div>
+
+    <div class="msg" style="--a:1;--b:3;--c:var(--page)">
+      <span class="lbl"><span class="mono">{ to:'engine', type:'ensure' }</span> · 直接广播，SW 不参与</span><span class="line"></span>
+    </div>
+    <div class="msg" style="--a:3;--b:4;--c:var(--off)">
+      <span class="lbl"><span class="mono">ensureLoaded()</span> · 并发共用同一个 promise</span><span class="line"></span>
+    </div>
+    <div class="msg dash" style="--a:4;--b:5;--c:var(--eng)">
+      <span class="lbl">查 Cache API · <span class="mono">cacheKey='gemma-translate'</span></span><span class="line"></span>
+    </div>
+    <div class="msg dash left" style="--a:4;--b:5;--c:var(--src)">
+      <span class="lbl">命中 → 本地读；未命中 → GET hf-mirror</span><span class="line"></span>
+    </div>
+    <div class="msg dash left" style="--a:3;--b:4;--c:var(--src)">
+      <span class="lbl">加载 <span class="mono">/ort/ort-wasm-*.{mjs,wasm}</span>（扩展包内）</span><span class="line"></span>
+    </div>
+    <div class="msg dash left" style="--a:1;--b:3;--c:var(--eng)">
+      <span class="lbl"><span class="mono">status { loading, percent }</span>（多次）→ 面板 / 浮标进度</span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:4;--c:var(--eng)">
+      <span class="lbl">pipeline 就绪：WebGPU · q4f16</span><span class="loop"></span>
+    </div>
+    <div class="msg left" style="--a:1;--b:3;--c:var(--off)">
+      <span class="lbl"><span class="mono">{ ok:true }</span> · 模型已加载</span><span class="line"></span>
+    </div>
+
+    <!-- ④ 翻译 -->
+    <div class="phase">④ 逐段翻译 · 串行（20 段 ≈ 14 s，不含下载）</div>
+
+    <div class="msg self" style="--a:1;--c:var(--page)">
+      <span class="lbl"><span class="mono">collectBlocks()</span>；每段 <span class="mono">mountHolder()</span> 插占位</span><span class="loop"></span>
+    </div>
+    <div class="msg" style="--a:1;--b:3;--c:var(--page)">
+      <span class="lbl"><span class="mono">translate { reqId, seq, text, target }</span></span><span class="line"></span>
+    </div>
+    <div class="msg" style="--a:3;--b:4;--c:var(--off)">
+      <span class="lbl"><span class="mono">translate()</span> → <span class="mono">splitText(≤600 字)</span></span><span class="line"></span>
+    </div>
+    <div class="msg dash left" style="--a:3;--b:4;--c:var(--eng)">
+      <span class="lbl"><span class="mono">chunk { delta }</span> · 逐 token 回传</span><span class="line"></span>
+    </div>
+    <div class="msg dash left" style="--a:1;--b:3;--c:var(--eng)">
+      <span class="lbl"><span class="mono">chunk</span> 广播到页面 · 写入占位 <span class="mono">streaming</span></span><span class="line"></span>
+    </div>
+    <div class="msg left" style="--a:1;--b:3;--c:var(--off)">
+      <span class="lbl"><span class="mono">sendResponse { ok, text, chunks, ms }</span></span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:1;--c:var(--page)">
+      <span class="lbl">定稿 <span class="mono">done</span>；下一段 ↻（重复 seq 1..N）</span><span class="loop"></span>
+    </div>
+    <div class="msg dash left" style="--a:0;--b:1;--c:var(--page)">
+      <span class="lbl">面板 <span class="mono">n/20</span> · 浮标同步（面板关闭时也更新）</span><span class="line"></span>
+    </div>
+
+    <!-- ⑤ 还原 -->
+    <div class="phase">⑤ 关闭面板 / 浮标召回 / 还原</div>
+
+    <div class="msg" style="--a:0;--b:1;--c:#475569">
+      <span class="lbl">点面板 <span class="mono">×</span> → 面板隐藏，浮标出现</span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:1;--c:var(--page)">
+      <span class="lbl"><span class="mono">setFloatHidden(false)</span></span><span class="loop"></span>
+    </div>
+    <div class="msg" style="--a:0;--b:1;--c:#475569">
+      <span class="lbl">点浮标 <span class="mono">.gt-float</span> → 面板召回</span><span class="line"></span>
+    </div>
+    <div class="msg" style="--a:0;--b:1;--c:#475569">
+      <span class="lbl">点「还原原文」</span><span class="line"></span>
+    </div>
+    <div class="msg self" style="--a:1;--c:var(--page)">
+      <span class="lbl"><span class="mono">restore()</span> 删除所有 <span class="mono">[data-gt]</span></span><span class="loop"></span>
+    </div>
+    <div class="msg left" style="--a:0;--b:1;--c:var(--page)">
+      <span class="lbl">原文恢复 · 浮标回到「译」</span><span class="line"></span>
+    </div>
+
+    <div class="seq-note">
+      <b>消息路由规则：</b>所有消息都走 <span class="mono">chrome.runtime.sendMessage</span> 广播。
+      offscreen 只接管 <span class="mono">msg.to === 'engine'</span>；background 只接管
+      <span class="mono">msg.to === 'bg'</span>；页面只处理 <span class="mono">msg.to === 'page'</span>
+      以及 <span class="mono">msg.from === 'engine'</span> 的进度 / chunk 广播。
+      offscreen 读不到 <span class="mono">chrome.storage</span>，所以配置始终由 SW 转发。
+      面板和会话同处一个上下文，因此面板状态更新不需要任何消息。
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
