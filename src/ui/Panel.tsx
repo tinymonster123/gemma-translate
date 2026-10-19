@@ -20,6 +20,12 @@ export function Panel({ session, visible, onClose }: PanelProps) {
 
   useEffect(() => session.subscribe(setState), [session]);
 
+  // 面板一打开就后台预热；订阅已经建立，preloading 状态能正常渲染。
+  useEffect(() => {
+    if (!visible) return;
+    void session.preload();
+  }, [visible, session]);
+
   useEffect(() => {
     void getSettings()
       .then((s) => setSavedTarget(s.targetLanguage))
@@ -55,6 +61,7 @@ export function Panel({ session, visible, onClose }: PanelProps) {
   const detectedCount = phase !== 'idle' && state.total ? state.total : probe.blockCount;
 
   const statusText = (() => {
+    if (phase === 'idle' && state.preloading) return '模型预热中…';
     if (phase === 'loading') {
       return state.enginePercent != null
         ? `下载模型 ${Math.round(state.enginePercent)}%`

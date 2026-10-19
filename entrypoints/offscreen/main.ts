@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { isReady, load, MODEL_ID, setModelHost, translate } from '../../src/engine/runtime';
+import { isReady, load, MODEL_ID, setModelHost, translate, warmup } from '../../src/engine/runtime';
 import { type EngineEvent, isEngineRequest } from '../../src/shared/protocol';
 
 let state: 'cold' | 'loading' | 'ready' | 'error' = 'cold';
@@ -108,6 +108,13 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case 'ensure': {
           const r = await ensureLoaded();
           sendResponse({ ok: true, model: MODEL_ID, ...r });
+          return;
+        }
+
+        case 'warmup': {
+          await ensureLoaded();
+          const r = await warmup();
+          sendResponse({ ok: true, ...r });
           return;
         }
 

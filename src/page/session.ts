@@ -7,6 +7,7 @@ import type {
   SessionState,
   TargetLanguage,
 } from '../shared/protocol';
+import { isModelCached, markModelCached } from '../shared/settings';
 import { type Block, collectBlocks, shouldInsertInside, themeOf } from './blocks';
 import { FloatView } from './float';
 
@@ -32,6 +33,7 @@ export class PageTranslationSession {
   private float: FloatView | null = null;
   private floatHidden = false;
   private listeners = new Set<(state: SessionState) => void>();
+  private preloadInFlight: Promise<void> | null = null;
 
   constructor(private deps: SessionDeps) {}
 
@@ -46,6 +48,57 @@ export class PageTranslationSession {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /**
+   * 面板打开时后台预热。
+   *
+   * 只有成功加载过模型（modelCached）才做，避免第一次打开面板就无提示下 3GB。
+   * 预热包含模型加载 + 一次 1-token 推理，把模型加载和首段 session/着色器
+   * 初始化都移出「点击翻译」这条路径。
+   */
+  preload(): Promise<void> | null {
+    if (this.preloadInFlight) return this.preloadInFlight;
+    if (this.state.phase !== 'idle') return null;
+
+    let p: Promise<void>;
+    p = this.doPreload().finally(() => {
+      if (this.preloadInFlight === p) this.preloadInFlight = null;
+    });
+    this.preloadInFlight = p;
+    return p;
+  }
+
+  private async doPreload(): Promise<void> {
+    try {
+      if (!(await isModelCached())) return;
+
+      const ready = await this.deps
+        .sendEngine({ to: 'engine', type: 'ping' })
+        .then((r) => !!r?.ready)
+        .catch(() => false);
+      if (ready) return;
+
+      this.setState({ ...this.state, preloading: true });
+
+      const ens = await this.deps.ensureEngine().catch((e) => ({
+        ok: false,
+        error: String(e),
+      }));
+      if (!ens?.ok) return;
+
+      const loaded = await this.deps
+        .sendEngine({ to: 'engine', type: 'ensure' })
+        .catch((e) => ({ ok: false, error: String((e as Error)?.message ?? e) }));
+      if (!loaded?.ok) return;
+
+      await markModelCached().catch(() => {});
+      await this.deps.sendEngine({ to: 'engine', type: 'warmup' }).catch(() => {});
+    } catch (e) {
+      console.warn('[gemma-translate] 预热失败:', e);
+    } finally {
+      if (this.state.preloading) this.setState({ ...this.state, preloading: false });
+    }
   }
 
   /** 面板打开时隐藏浮标，关闭后恢复。 */
@@ -87,6 +140,10 @@ export class PageTranslationSession {
     });
     this.float?.set('准备引擎…', true);
 
+    // 面板打开时可能已经在后台预热；等它结束，避免 warmup 和第一段推理并发。
+    if (this.preloadInFlight) await this.preloadInFlight;
+    if (this.cancelled) return this.stop();
+
     // 1) background 确保 offscreen 存在，并把 modelHost 转发进去
     const ens = await this.deps.ensureEngine().catch((e) => ({ ok: false, error: String(e) }));
     if (!ens?.ok) return this.fail(ens?.error ?? '引擎不可用');
@@ -99,6 +156,7 @@ export class PageTranslationSession {
       error: String((e as Error)?.message ?? e),
     }))) as EngineEnsureResult;
     if (!loaded?.ok) return this.fail(loaded?.error ?? '模型加载失败');
+    void markModelCached().catch(() => {});
     if (this.cancelled) return this.stop();
 
     // 3) 逐段串行翻译；chunk 只是提前显示
@@ -179,6 +237,7 @@ export class PageTranslationSession {
       total: 0,
       target: null,
       enginePercent: null,
+      preloading: false,
       message: undefined,
     });
     this.float?.set('译');

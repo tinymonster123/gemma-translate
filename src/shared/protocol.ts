@@ -47,6 +47,8 @@ export interface SessionState {
   total: number;
   target?: TargetLanguage | null;
   enginePercent?: number | null;
+  /** 面板打开后的后台预热（加载模型 + 1-token 推理），不阻塞用户操作 */
+  preloading?: boolean;
   message?: string;
 }
 
@@ -77,6 +79,7 @@ export type EngineRequest =
   | { to: 'engine'; type: 'ping' }
   | { to: 'engine'; type: 'config'; modelHost: string | null }
   | { to: 'engine'; type: 'ensure' }
+  | { to: 'engine'; type: 'warmup' }
   | {
       to: 'engine';
       type: 'translate';

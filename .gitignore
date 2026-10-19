@@ -2,6 +2,7 @@ node_modules/
 .output/
 .wxt/
 .firecrawl/
+perf/
 public/ort/
 *.log
 .DS_Store

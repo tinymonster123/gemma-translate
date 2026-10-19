@@ -8,8 +8,8 @@
       "!**/.wxt",
       "!**/.firecrawl",
       "!**/public/ort",
+      "!**/perf",
       "!**/package-lock.json",
-      "!ext",
       "!shots"
     ]
   },

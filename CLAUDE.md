@@ -8,6 +8,7 @@
 - `npm test` — Vitest 纯逻辑单测
 - `npm run build` — 构建到 `.output/chrome-mv3`
 - `npm run probe` — 端到端验证（34 项，需要本机 Chrome + 3.2GB 模型）
+- `npm run perf` — 分阶段性能基线（cold / cache / warm，同上的环境要求）
 - `npm run lint` / `npm run format` — Biome
 
 ## 硬约束
@@ -16,6 +17,7 @@
 - 推理只能在 offscreen document：MV3 service worker 禁止动态 `import()`。
 - wasm 走 `public/ort/` 稳定路径，不从 CDN 拉。
 - 面板样式走 constructable stylesheet，不往页面里插 `<style>`。
+- 面板预热只在 `modelCached` 为 true 后触发；首次使用不得因打开面板就下载 3GB。
 
 架构与实测数据见 `README.md`；端到端判读见 `.claude/skills/verify-translate-flow/SKILL.md`。
 

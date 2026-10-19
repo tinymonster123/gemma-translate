@@ -30,3 +30,16 @@ export async function setSetting<K extends keyof Settings>(
 ): Promise<void> {
   await browser.storage.local.set({ [key]: value });
 }
+
+/**
+ * 是否成功加载过模型。只有置为 true 时，面板打开才会后台预加载；
+ * 第一次使用不能因为「打开面板」就无提示下 3GB。
+ */
+export async function isModelCached(): Promise<boolean> {
+  const raw = (await browser.storage.local.get('modelCached')) as Record<string, unknown>;
+  return raw.modelCached === true;
+}
+
+export async function markModelCached(): Promise<void> {
+  await browser.storage.local.set({ modelCached: true });
+}

@@ -13,6 +13,7 @@ npm run lint             # Biome 检查（CI 会跑）
 npm run format           # Biome 格式化
 npm test                 # 纯逻辑单测（切句 / 语言判断）
 npm run probe            # 端到端：面板 → 本地 Gemma → 逐段译文 → 停止 / 还原（34 项）
+npm run perf             # 分阶段性能基线：cold / cache / warm，原始时间线写入 perf/
 ```
 
 Chrome → `chrome://extensions` → 打开开发者模式 → **加载已解压的扩展程序** → 选 `.output/chrome-mv3`。
@@ -106,6 +107,13 @@ ORT 的 WebGPU EP 要靠动态 import 拉自己的 `.mjs`。`chrome-extension://
 
 走 HTTP / Cache API 时长度天然存在（实测缓存往返后 `Content-Length` 仍保留），这条路自动消失。
 **不再需要任何 fetch 补丁。**
+
+## 性能与预热
+
+`npm run perf` 会跑 cold / cache / warm 三段并输出分阶段耗时。面板打开且 `modelCached`
+为 true 时，扩展会在后台加载模型并跑一次 1-token 推理，把模型加载和首段
+session / 着色器初始化移出「点击翻译」这条路径；首次使用（无 Cache）不预加载，
+避免只是打开面板就无提示下载 3.1GB。
 
 ## 已知限制 / 下一步
 

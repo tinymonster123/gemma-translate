@@ -16,7 +16,8 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "test": "vitest run",
-    "probe": "npm run build && node probes/flow-verify.mjs"
+    "probe": "npm run build && node probes/flow-verify.mjs",
+    "perf": "npm run build && node probes/perf-trace.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",

@@ -70,6 +70,23 @@ export function load(onProgress?: (p: Progress) => void): Promise<LoadResult> {
   return loadingPromise;
 }
 
+/**
+ * 预热：模型加载完成后先跑一次 1-token 生成。
+ *
+ * `pipeline()` resolve 时 session 还没完全就绪；第一段真实翻译会额外付
+ * 2–6 秒的 session / 着色器初始化。放在面板打开时做，点击翻译就不用再付。
+ */
+export async function warmup(): Promise<{ ms: number }> {
+  if (!generator) await load();
+
+  const t0 = performance.now();
+  await generator(buildMessages('Hello', 'Chinese (Simplified)'), {
+    max_new_tokens: 1,
+    do_sample: false,
+  });
+  return { ms: Math.round(performance.now() - t0) };
+}
+
 export async function translate({
   text,
   target,
