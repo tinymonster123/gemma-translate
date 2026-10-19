@@ -1,6 +1,14 @@
 import { pipeline, TextStreamer } from '@huggingface/transformers';
 import { configure, DEVICE, DTYPE, MODEL_ID } from './source';
-import { appendChunk, buildMessages, maxNewTokens, splitText } from './text';
+import {
+  appendChunk,
+  buildMessages,
+  type ChunkTiming,
+  maxNewTokens,
+  splitText,
+  summarizeTimings,
+  type TimingSummary,
+} from './text';
 
 export { MODEL_ID, setModelHost } from './source';
 
@@ -26,6 +34,8 @@ export interface TranslateResult {
   text: string;
   chunks: number;
   ms: number;
+  /** 每段的 token 数 / 首 token 时间 / decode 拆分 */
+  stats: TimingSummary;
 }
 
 // 不同版本的 transformers.js 对 pipeline 的泛型不一致，这里只关心调用形状。
@@ -36,6 +46,21 @@ let loadingPromise: Promise<LoadResult> | null = null;
 
 export function isReady(): boolean {
   return generator !== null;
+}
+
+/** 诊断用：确认实际落到的 device / dtype 和 ORT session 的可见字段。 */
+export function deviceInfo(): Record<string, unknown> {
+  const sessions = (generator as any)?.model?.sessions ?? {};
+  const first: any = Object.values(sessions)[0];
+  return {
+    configuredDevice: DEVICE,
+    dtype: DTYPE,
+    hasWebGpu: typeof navigator !== 'undefined' && 'gpu' in navigator,
+    sessionKeys: first ? Object.keys(first) : [],
+    sessionConfig: first?.config ?? null,
+    sessionOptions: first?.sessionOptions ?? null,
+    handlerKeys: first?.handler ? Object.keys(first.handler) : [],
+  };
 }
 
 export function load(onProgress?: (p: Progress) => void): Promise<LoadResult> {
@@ -96,14 +121,24 @@ export async function translate({
 
   const chunks = splitText(text);
   const t0 = performance.now();
+  const timings: ChunkTiming[] = [];
   let out = '';
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]!;
+    const chunkStart = performance.now();
     let piece = '';
+    let tokens = 0;
+    let firstTokenMs: number | null = null;
     const streamer = new TextStreamer(generator.tokenizer, {
       skip_prompt: true,
       skip_special_tokens: true,
+      token_callback_function: (generated: bigint[]) => {
+        tokens += generated.length;
+        if (firstTokenMs == null) {
+          firstTokenMs = Math.round(performance.now() - chunkStart);
+        }
+      },
       callback_function: (s: string) => {
         piece += s;
         onDelta?.(s);
@@ -120,6 +155,12 @@ export async function translate({
       streamer,
     });
 
+    timings.push({
+      ms: Math.round(performance.now() - chunkStart),
+      tokens,
+      firstTokenMs,
+    });
+
     const cleaned = piece.trim();
     if (cleaned) {
       if (i > 0) onDelta?.(' ');
@@ -127,5 +168,10 @@ export async function translate({
     }
   }
 
-  return { text: out, chunks: chunks.length, ms: Math.round(performance.now() - t0) };
+  return {
+    text: out,
+    chunks: chunks.length,
+    ms: Math.round(performance.now() - t0),
+    stats: summarizeTimings(timings),
+  };
 }

@@ -1,5 +1,13 @@
 import { browser } from 'wxt/browser';
-import { isReady, load, MODEL_ID, setModelHost, translate, warmup } from '../../src/engine/runtime';
+import {
+  deviceInfo,
+  isReady,
+  load,
+  MODEL_ID,
+  setModelHost,
+  translate,
+  warmup,
+} from '../../src/engine/runtime';
 import { type EngineEvent, isEngineRequest } from '../../src/shared/protocol';
 
 let state: 'cold' | 'loading' | 'ready' | 'error' = 'cold';
@@ -97,6 +105,7 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             ready: isReady(),
             model: MODEL_ID,
             error: lastError,
+            device: isReady() ? deviceInfo() : null,
           });
           return;
 
@@ -126,7 +135,7 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             target,
             onDelta: (delta) => broadcast({ from: 'engine', type: 'chunk', reqId, seq, delta }),
           });
-          sendResponse({ ok: true, text: r.text, chunks: r.chunks, ms: r.ms });
+          sendResponse({ ok: true, text: r.text, chunks: r.chunks, ms: r.ms, stats: r.stats });
           return;
         }
       }

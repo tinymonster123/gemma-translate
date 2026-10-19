@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendChunk, buildMessages, maxNewTokens, splitText } from './text';
+import { appendChunk, buildMessages, maxNewTokens, splitText, summarizeTimings } from './text';
 
 describe('splitText', () => {
   it('短文本不切', () => {
@@ -53,5 +53,34 @@ describe('maxNewTokens', () => {
     expect(maxNewTokens(1)).toBe(48);
     expect(maxNewTokens(1000)).toBe(400);
     expect(maxNewTokens(100)).toBe(220);
+  });
+});
+
+describe('summarizeTimings', () => {
+  it('汇总 token / prefill / decode', () => {
+    const s = summarizeTimings([
+      { ms: 100, tokens: 1, firstTokenMs: 80 },
+      { ms: 50, tokens: 5, firstTokenMs: 20 },
+    ]);
+    expect(s).toEqual({
+      chunks: 2,
+      tokens: 6,
+      firstTokenMs: 80,
+      prefillMs: 100,
+      decodeMs: 50,
+    });
+  });
+
+  it('没有 token 时把耗时算进 prefill', () => {
+    const s = summarizeTimings([{ ms: 30, tokens: 0, firstTokenMs: null }]);
+    expect(s.tokens).toBe(0);
+    expect(s.firstTokenMs).toBeNull();
+    expect(s.prefillMs).toBe(30);
+    expect(s.decodeMs).toBe(0);
+  });
+
+  it('首 token 时间大于总耗时不产生负 decode', () => {
+    const s = summarizeTimings([{ ms: 10, tokens: 1, firstTokenMs: 20 }]);
+    expect(s.decodeMs).toBe(0);
   });
 });

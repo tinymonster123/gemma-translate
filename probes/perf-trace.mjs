@@ -376,6 +376,36 @@ try {
     const tDone = Date.now();
 
     const trace = await page.evaluate(() => JSON.parse(JSON.stringify(window.__gtPerf)));
+    const engineStats = await page.evaluate(() =>
+      [...document.querySelectorAll('.gt-block[data-gt]')]
+        .map((el) => {
+          try {
+            return JSON.parse(el.dataset.gtStats ?? 'null');
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean),
+    );
+    const engine = (() => {
+      const tokens = engineStats.reduce((sum, x) => sum + (x.tokens ?? 0), 0);
+      const prefillMs = engineStats.reduce((sum, x) => sum + (x.prefillMs ?? 0), 0);
+      const decodeMs = engineStats.reduce((sum, x) => sum + (x.decodeMs ?? 0), 0);
+      return {
+        blocks: engineStats.length,
+        tokens,
+        prefillMs,
+        decodeMs,
+        decodeTps: decodeMs > 0 ? Math.round((tokens / (decodeMs / 1000)) * 10) / 10 : null,
+        tokensPerBlock: stats(engineStats.map((x) => x.tokens ?? 0)),
+        prefillPerBlock: stats(engineStats.map((x) => x.prefillMs ?? 0)),
+        decodePerBlock: stats(engineStats.map((x) => x.decodeMs ?? 0)),
+        firstTokenMs: stats(engineStats.map((x) => x.firstTokenMs).filter((x) => x != null)),
+      };
+    })();
+    const enginePing = await sw
+      .evaluate(() => chrome.runtime.sendMessage({ to: 'engine', type: 'ping' }))
+      .catch(() => null);
     const hf = hfDelta(hfBefore, await hfStats());
 
     const done = trace.blocks.filter((b) => b.done != null);
@@ -429,6 +459,8 @@ try {
         visibleStreaming,
         buckets,
       },
+      engine,
+      enginePing,
       modelSource: hf,
       trace,
     };
@@ -458,6 +490,17 @@ try {
       `  每段推理 ms   median ${fmt(result.blocks.offscreenMs?.median)} · ` +
         `p95 ${fmt(result.blocks.offscreenMs?.p95)} · sum ${fmt(result.blocks.offscreenMs?.sum)}`,
     );
+    console.log(
+      `  引擎拆分      tokens ${engine.tokens} 个 · prefill ${fmt(engine.prefillMs)} · ` +
+        `decode ${fmt(engine.decodeMs)} · ${engine.decodeTps ?? '—'} tok/s`,
+    );
+    console.log(
+      `  每段 tokens   median ${engine.tokensPerBlock?.median ?? '—'} · ` +
+        `prefill median ${fmt(engine.prefillPerBlock?.median)} · ` +
+        `decode median ${fmt(engine.decodePerBlock?.median)}`,
+    );
+    console.log(`  引擎设备      ${JSON.stringify(enginePing?.device ?? null)}`);
+    if (!engine.blocks) console.log('  ⚠ 没有读到 data-gt-stats，引擎计时未生效');
     console.log(
       `  页面开销      median ${fmt(result.blocks.overheadMs?.median)} · ` +
         `p95 ${fmt(result.blocks.overheadMs?.p95)}`,

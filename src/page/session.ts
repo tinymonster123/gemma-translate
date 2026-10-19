@@ -205,6 +205,7 @@ export class PageTranslationSession {
         holder.textContent = result.text;
         holder.dataset.gtState = 'done';
         holder.title = `${result.chunks} 块 · ${result.ms}ms`;
+        if (result.stats) holder.dataset.gtStats = JSON.stringify(result.stats);
       } else {
         holder.textContent = `（翻译失败：${result?.error ?? '未知错误'}）`;
         holder.dataset.gtState = 'error';
