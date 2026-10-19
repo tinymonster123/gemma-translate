@@ -110,10 +110,16 @@ ORT 的 WebGPU EP 要靠动态 import 拉自己的 `.mjs`。`chrome-extension://
 
 ## 性能与预热
 
-`npm run perf` 会跑 cold / cache / warm 三段并输出分阶段耗时。面板打开且 `modelCached`
-为 true 时，扩展会在后台加载模型并跑一次 1-token 推理，把模型加载和首段
-session / 着色器初始化移出「点击翻译」这条路径；首次使用（无 Cache）不预加载，
-避免只是打开面板就无提示下载 3.1GB。
+`npm run perf` 会跑 cold / cache / warm 三段，输出模型加载、prefill、decode、token 数和
+每段耗时，并用交替顺序对「前缀复用开 / 关」做 A/B。
+
+面板打开且 `modelCached` 为 true 时，扩展会在后台加载模型、跑一次 1-token 推理，
+并预填 system prompt 的 KV 前缀；首次使用（无 Cache）不预加载，避免只是打开面板
+就无提示下载 3.1GB。
+
+翻译时默认复用这段 system prompt 前缀（`chrome.storage.local.prefixCache` 可关掉做 A/B）。
+实测 20 段页面：prefill 从约 4.0s 降到约 2.6s，点击 → 完成从约 12.5–13.5s 降到
+约 10.9–11.1s；18/20 段译文逐字节一致，少数段落是等价改写（不同执行路径的浮点非确定性）。
 
 ## 已知限制 / 下一步
 

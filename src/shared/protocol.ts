@@ -79,7 +79,7 @@ export type EngineRequest =
   | { to: 'engine'; type: 'ping' }
   | { to: 'engine'; type: 'config'; modelHost: string | null }
   | { to: 'engine'; type: 'ensure' }
-  | { to: 'engine'; type: 'warmup' }
+  | { to: 'engine'; type: 'warmup'; target?: string; usePrefix?: boolean }
   | {
       to: 'engine';
       type: 'translate';
@@ -87,6 +87,8 @@ export type EngineRequest =
       seq: number;
       text: string;
       target: string;
+      /** 实验开关：复用 system prompt 的 KV 前缀 */
+      usePrefix?: boolean;
     };
 
 export interface EngineStatusEvent {

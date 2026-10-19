@@ -121,21 +121,30 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
 
         case 'warmup': {
+          const { target, usePrefix } = msg;
           await ensureLoaded();
-          const r = await warmup();
+          const r = await warmup({ target, usePrefix });
           sendResponse({ ok: true, ...r });
           return;
         }
 
         case 'translate': {
-          const { reqId, seq, text, target } = msg;
+          const { reqId, seq, text, target, usePrefix } = msg;
           await ensureLoaded();
           const r = await translate({
             text,
             target,
+            usePrefix,
             onDelta: (delta) => broadcast({ from: 'engine', type: 'chunk', reqId, seq, delta }),
           });
-          sendResponse({ ok: true, text: r.text, chunks: r.chunks, ms: r.ms, stats: r.stats });
+          sendResponse({
+            ok: true,
+            text: r.text,
+            chunks: r.chunks,
+            ms: r.ms,
+            stats: r.stats,
+            prefix: r.prefix,
+          });
           return;
         }
       }

@@ -33,6 +33,7 @@ const headless = process.env.HEADLESS === '1';
 const OUT = join(ROOT, 'perf');
 const LOAD = loadavg().map((x) => Number(x.toFixed(2)));
 const CORES = cpus().length;
+const WARM_REPEATS = Math.max(1, Number(process.env.WARM_REPEATS ?? 1));
 
 const line = (s) => console.log('\n' + s);
 const fmt = (ms) => (ms == null ? '—' : `${Math.round(ms)}ms`);
@@ -191,6 +192,8 @@ try {
           if ((state === 'done' || state === 'error') && rec.done == null) {
             rec.done = performance.now();
             rec.title = el.title || null;
+            rec.text = text;
+            rec.prefix = el.dataset.gtPrefix === '1';
             mo.disconnect();
           }
         });
@@ -254,8 +257,13 @@ try {
       expectLoad = true,
       reopenPanel = false,
       preloadExpected = false,
+      prefix = null,
     } = {},
   ) {
+    if (prefix != null) {
+      await sw.evaluate((value) => chrome.storage.local.set({ prefixCache: value }), prefix);
+    }
+
     if (closeOffscreen) {
       const closed = await sw
         .evaluate(async () => {
@@ -387,6 +395,13 @@ try {
         })
         .filter(Boolean),
     );
+    const prefixInfo = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('.gt-block[data-gt]')];
+      return {
+        used: els.filter((el) => el.dataset.gtPrefix === '1').length,
+        total: els.length,
+      };
+    });
     const engine = (() => {
       const tokens = engineStats.reduce((sum, x) => sum + (x.tokens ?? 0), 0);
       const prefillMs = engineStats.reduce((sum, x) => sum + (x.prefillMs ?? 0), 0);
@@ -461,12 +476,13 @@ try {
       },
       engine,
       enginePing,
+      prefix: prefixInfo,
       modelSource: hf,
       trace,
     };
     scenarios.push(result);
 
-    line(`=== ${label} ===`);
+    line(`=== ${label}${prefix == null ? '' : `（prefix=${prefix}）`} ===`);
     if (reopenPanel) console.log(`  面板预热（打开 → warmup 完成）         ${fmt(preloadMs)}`);
     console.log(`  引擎就绪（创建 offscreen / 转发配置）  ${fmt(result.engineReadyMs)}`);
     console.log(`  模型加载（含下载 / Cache 读取）        ${fmt(result.modelLoadMs)}`);
@@ -499,6 +515,7 @@ try {
         `prefill median ${fmt(engine.prefillPerBlock?.median)} · ` +
         `decode median ${fmt(engine.decodePerBlock?.median)}`,
     );
+    console.log(`  前缀复用      ${prefixInfo.used}/${prefixInfo.total} 段`);
     console.log(`  引擎设备      ${JSON.stringify(enginePing?.device ?? null)}`);
     if (!engine.blocks) console.log('  ⚠ 没有读到 data-gt-stats，引擎计时未生效');
     console.log(
@@ -539,26 +556,57 @@ try {
   });
   await restore();
 
-  // 3) offscreen 存活；重开面板时 preload 只 ping 一下，随后只付推理。
-  await runScenario('warm（引擎存活）', {
-    expectLoad: false,
-    reopenPanel: true,
-    preloadExpected: false,
-  });
+  // 3) offscreen 存活；奇偶轮交换顺序，抵消 GPU 热漂移。
+  for (let rep = 1; rep <= WARM_REPEATS; rep++) {
+    const order = rep % 2 === 1 ? [false, true] : [true, false];
+    for (const prefix of order) {
+      await runScenario(`warm ${prefix ? '前缀开启' : '前缀关闭'} #${rep}`, {
+        expectLoad: false,
+        reopenPanel: true,
+        preloadExpected: false,
+        prefix,
+      });
+      await restore();
+    }
+  }
 
   line('=== 对比 ===');
-  console.log('场景                 预热       引擎就绪   模型加载   推理 wall   总计');
+  console.log('场景                 预热       推理 wall   prefill    decode     总计');
   for (const s of scenarios) {
     console.log(
       `${s.label.padEnd(20)} ${fmt(s.preloadMs).padStart(9)} ` +
-        `${fmt(s.engineReadyMs).padStart(8)} ${fmt(s.modelLoadMs).padStart(10)} ` +
-        `${fmt(s.inferenceWallMs).padStart(10)} ${fmt(s.totalMs).padStart(9)}`,
+        `${fmt(s.inferenceWallMs).padStart(10)} ${fmt(s.engine.prefillMs).padStart(9)} ` +
+        `${fmt(s.engine.decodeMs).padStart(9)} ${fmt(s.totalMs).padStart(9)}`,
     );
   }
   console.log(
     `\nCache 命中校验: cache 场景新增模型请求 ${cacheRun.modelSource.count} 个` +
       (cacheRun.modelSource.count === 0 ? ' ✅' : ' ❌ 仍走了模型源'),
   );
+
+  const offRuns = scenarios.filter((s) => s.label.includes('前缀关闭'));
+  const onRuns = scenarios.filter((s) => s.label.includes('前缀开启'));
+  if (offRuns.length && onRuns.length) {
+    const off = offRuns.at(-1);
+    const on = onRuns.at(-1);
+    const a = off.trace.blocks.map((b) => b.text ?? '');
+    const b = on.trace.blocks.map((b) => b.text ?? '');
+    const same = a.length === b.length && a.every((t, i) => t === b[i]);
+    console.log(
+      `\n前缀复用: 关闭 ${off.prefix.used}/${off.prefix.total} · ` +
+        `开启 ${on.prefix.used}/${on.prefix.total}`,
+    );
+    console.log(`前缀输出与逐段一致: ${same ? '✅' : '❌'}（${a.length} vs ${b.length} 段）`);
+    if (!same) {
+      const diffs = a
+        .map((t, i) => [i, t, b[i]])
+        .filter(([i, t, u]) => t !== u)
+        .slice(0, 3);
+      for (const [i, t, u] of diffs) {
+        console.log(`  #${i}: 关闭=${(t || '').slice(0, 60)} | 开启=${(u || '').slice(0, 60)}`);
+      }
+    }
+  }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outFile = join(OUT, `perf-${stamp}.json`);

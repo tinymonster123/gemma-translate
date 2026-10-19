@@ -5,22 +5,27 @@ export interface Settings {
   modelHost: string | null;
   /** 上次选择的目标语言 */
   targetLanguage: string;
+  /** 实验开关：复用 system prompt 的 KV 前缀 */
+  prefixCache: boolean;
 }
 
 const DEFAULTS: Settings = {
   modelHost: null,
   targetLanguage: 'zh-CN',
+  prefixCache: true,
 };
 
 export async function getSettings(): Promise<Settings> {
   const raw = (await (browser.storage.local.get as (keys: string[]) => Promise<any>)([
     'modelHost',
     'targetLanguage',
+    'prefixCache',
   ])) as Record<string, unknown>;
   return {
     modelHost: typeof raw.modelHost === 'string' && raw.modelHost ? raw.modelHost : null,
     targetLanguage:
       typeof raw.targetLanguage === 'string' ? raw.targetLanguage : DEFAULTS.targetLanguage,
+    prefixCache: raw.prefixCache !== false,
   };
 }
 

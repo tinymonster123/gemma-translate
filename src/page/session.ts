@@ -1,13 +1,14 @@
 import { baseLangCode, defaultTarget, pageLanguage } from '../shared/language';
-import type {
-  EngineEnsureResult,
-  EngineEvent,
-  EngineRequest,
-  PageProbeResult,
-  SessionState,
-  TargetLanguage,
+import {
+  type EngineEnsureResult,
+  type EngineEvent,
+  type EngineRequest,
+  type PageProbeResult,
+  type SessionState,
+  type TargetLanguage,
+  targetByCode,
 } from '../shared/protocol';
-import { isModelCached, markModelCached } from '../shared/settings';
+import { getSettings, isModelCached, markModelCached } from '../shared/settings';
 import { type Block, collectBlocks, shouldInsertInside, themeOf } from './blocks';
 import { FloatView } from './float';
 
@@ -93,7 +94,17 @@ export class PageTranslationSession {
       if (!loaded?.ok) return;
 
       await markModelCached().catch(() => {});
-      await this.deps.sendEngine({ to: 'engine', type: 'warmup' }).catch(() => {});
+
+      const settings = await getSettings().catch(() => null);
+      const target = targetByCode(settings?.targetLanguage ?? 'zh-CN');
+      await this.deps
+        .sendEngine({
+          to: 'engine',
+          type: 'warmup',
+          target: target.prompt,
+          usePrefix: settings?.prefixCache !== false,
+        })
+        .catch(() => {});
     } catch (e) {
       console.warn('[gemma-translate] 预热失败:', e);
     } finally {
@@ -176,6 +187,9 @@ export class PageTranslationSession {
       return this.getState();
     }
 
+    const settings = await getSettings().catch(() => null);
+    const usePrefix = settings?.prefixCache === true;
+
     for (let i = 0; i < blocks.length; i++) {
       if (this.cancelled) return this.stop();
 
@@ -195,6 +209,7 @@ export class PageTranslationSession {
           seq,
           text: block.text,
           target: target.prompt,
+          usePrefix,
         });
       } catch (e) {
         result = { ok: false, error: String((e as Error)?.message ?? e) };
@@ -206,6 +221,7 @@ export class PageTranslationSession {
         holder.dataset.gtState = 'done';
         holder.title = `${result.chunks} 块 · ${result.ms}ms`;
         if (result.stats) holder.dataset.gtStats = JSON.stringify(result.stats);
+        holder.dataset.gtPrefix = result.prefix ? '1' : '0';
       } else {
         holder.textContent = `（翻译失败：${result?.error ?? '未知错误'}）`;
         holder.dataset.gtState = 'error';
