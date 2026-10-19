@@ -129,6 +129,7 @@ decode 速度（约 30ms/token、33–38 tok/s）受 WebGPU 每算子 dispatch �
 旋钮都已试过、均无收益：JS logits processor、streamer detokenize、prompt 瘦身、两路并发、
 `enableGraphCapture`（要求输出留在 GPU，与采样路径冲突）。`npm run bench` 是可复现的
 交替 A/B 工具；跨 run 的绝对数字会被 GPU 热漂移放大，只看同一轮内的相对差。
+完整实验记录（含负结果和机制解释）见 `docs/experiments/2026-10-19-decode.md`。
 
 ## 已知限制 / 下一步
 
@@ -149,3 +150,6 @@ decode 速度（约 30ms/token、33–38 tok/s）受 WebGPU 每算子 dispatch �
 `probes/` 是探针源码（在项目根目录），`.agents/probes` 是指向它的软链接视图；skill 仍在 `.claude/skills/`。
 
 `node probes/render-diagrams.mjs` 重新渲染 `docs/diagrams.html` 到 `shots/*.png`。
+
+`docs/experiments/` 保存做过的优化实验记录（负结果也保留）；decode 的完整实验见
+`docs/experiments/2026-10-19-decode.md`。
