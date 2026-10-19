@@ -25,9 +25,11 @@ export default defineBackground(() => {
     });
   });
 
-  browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!isBgRequest(msg)) return;
-    handle(msg).then(sendResponse, (e) => sendResponse(err(String((e as Error)?.message ?? e))));
+    handle(msg, sender).then(sendResponse, (e) =>
+      sendResponse(err(String((e as Error)?.message ?? e))),
+    );
     return true;
   });
 
@@ -35,11 +37,15 @@ export default defineBackground(() => {
   (self as any).__GT_TOGGLE_PANEL = togglePanel;
 });
 
-async function handle(msg: BgRequest): Promise<Result<unknown>> {
+async function handle(msg: BgRequest, sender: { tab?: { id?: number } }): Promise<Result<unknown>> {
   try {
     switch (msg.type) {
       case 'engine:ensure':
-        return await ensureOffscreen();
+        return await ensureOffscreen(sender.tab?.id ?? null);
+      case 'engine:relay':
+        // offscreen 只拿得到 runtime API；content script 必须由 SW 用 tabs.sendMessage 触达。
+        await browser.tabs.sendMessage(msg.tabId, msg.event);
+        return ok(null);
       default:
         return err('未知消息');
     }
@@ -82,16 +88,16 @@ async function ensurePageScript(tabId: number): Promise<void> {
 
 let ensurePromise: Promise<Result<EngineEnsureResult>> | null = null;
 
-function ensureOffscreen(): Promise<Result<EngineEnsureResult>> {
+function ensureOffscreen(tabId: number | null): Promise<Result<EngineEnsureResult>> {
   if (!ensurePromise) {
-    ensurePromise = doEnsureOffscreen().finally(() => {
+    ensurePromise = doEnsureOffscreen(tabId).finally(() => {
       ensurePromise = null;
     });
   }
   return ensurePromise;
 }
 
-async function doEnsureOffscreen(): Promise<Result<EngineEnsureResult>> {
+async function doEnsureOffscreen(tabId: number | null): Promise<Result<EngineEnsureResult>> {
   if (!(await browser.offscreen.hasDocument())) {
     await browser.offscreen.createDocument({
       url: OFFSCREEN_PATH,
@@ -111,7 +117,12 @@ async function doEnsureOffscreen(): Promise<Result<EngineEnsureResult>> {
         // offscreen 读不到 chrome.storage，配置只能由这里转发。
         const { modelHost } = await browser.storage.local.get('modelHost');
         await browser.runtime
-          .sendMessage({ to: 'engine', type: 'config', modelHost: modelHost ?? null })
+          .sendMessage({
+            to: 'engine',
+            type: 'config',
+            modelHost: modelHost ?? null,
+            relayTabId: tabId,
+          })
           .catch(() => {});
         return ok<EngineEnsureResult>({
           ok: true,

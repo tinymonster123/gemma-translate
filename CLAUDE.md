@@ -19,6 +19,7 @@
 - 面板样式走 constructable stylesheet，不往页面里插 `<style>`。
 - 面板预热只在 `modelCached` 为 true 后触发；首次使用不得因打开面板就下载 3GB。
 - system prompt 的 KV 前缀在预热时预填，翻译时默认复用；`prefixCache` storage 开关用于 A/B。
+- 引擎事件（`chunk` / `status`）必须由 background 用 `tabs.sendMessage` 转发；content script 收不到 offscreen 的 `runtime.sendMessage`。
 
 架构与实测数据见 `README.md`；端到端判读见 `.claude/skills/verify-translate-flow/SKILL.md`。
 

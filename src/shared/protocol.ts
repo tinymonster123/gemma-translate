@@ -68,7 +68,10 @@ export interface Result<T> {
 
 // ── page → background ───────────────────────────────────────────
 // 面板和页面会话在同一个上下文，只有「拉起 offscreen」需要找 background。
-export type BgRequest = { to: 'bg'; type: 'engine:ensure' };
+export type BgRequest =
+  | { to: 'bg'; type: 'engine:ensure' }
+  /** offscreen 不能直接给 content script 发消息，必须由 SW 用 tabs.sendMessage 转发 */
+  | { to: 'bg'; type: 'engine:relay'; tabId: number; event: EngineEvent };
 
 // ── background → page ───────────────────────────────────────────
 // 点插件图标只做一件事：让页面里的悬浮面板显示/隐藏。
@@ -77,7 +80,7 @@ export type PageRequest = { to: 'page'; type: 'panel:toggle' };
 // ── page / background → offscreen ───────────────────────────────
 export type EngineRequest =
   | { to: 'engine'; type: 'ping' }
-  | { to: 'engine'; type: 'config'; modelHost: string | null }
+  | { to: 'engine'; type: 'config'; modelHost: string | null; relayTabId?: number | null }
   | { to: 'engine'; type: 'ensure' }
   | { to: 'engine'; type: 'warmup'; target?: string; usePrefix?: boolean }
   | {
@@ -89,7 +92,46 @@ export type EngineRequest =
       target: string;
       /** 实验开关：复用 system prompt 的 KV 前缀 */
       usePrefix?: boolean;
+    }
+  | {
+      to: 'engine';
+      type: 'bench';
+      text: string;
+      target: string;
+      maxNewTokens: number;
+      repeats: number;
+      variants: BenchVariant[];
+    }
+  | {
+      to: 'engine';
+      type: 'bench-parallel';
+      text: string;
+      target: string;
+      maxNewTokens: number;
+      repeats: number;
+      parallel: number;
+      options?: Record<string, unknown>;
     };
+
+/** 实验用：一组同输入不同 generate 参数的对照。 */
+export interface BenchVariant {
+  name: string;
+  /** 覆盖 pipeline 的生成参数 */
+  options?: Record<string, unknown>;
+  /** 覆盖 system prompt（默认用 buildMessages 的那条） */
+  system?: string;
+  /** 是否挂 detokenize 回调（默认 true） */
+  withTextCallback?: boolean;
+}
+
+export interface BenchRun {
+  variant: string;
+  ms: number;
+  tokens: number;
+  firstTokenMs: number | null;
+  chars: number;
+  text: string;
+}
 
 export interface EngineStatusEvent {
   from: 'engine';

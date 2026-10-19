@@ -1,4 +1,5 @@
 import { pipeline, TextStreamer } from '@huggingface/transformers';
+import type { BenchRun } from '../shared/protocol';
 import { configure, DEVICE, DTYPE, MODEL_ID } from './source';
 import {
   appendChunk,
@@ -40,6 +41,9 @@ export interface TranslateResult {
   stats: TimingSummary;
   /** 这一段是否真的走了前缀复用 */
   prefix: boolean;
+  /** 实验用：detokenize 回调次数与首次到达时间 */
+  deltaCount: number;
+  firstDeltaMs: number | null;
 }
 
 // 不同版本的 transformers.js 对 pipeline 的泛型不一致，这里只关心调用形状。
@@ -235,6 +239,175 @@ function resetPrefixCache(state: PrefixState): void {
   Object.assign(state.cache, state.prefix);
 }
 
+/**
+ * 并发实验：同样的生成，串行跑 K 次 vs 同时跑 K 次。
+ *
+ * WebGPU 的 batch=1 decode 大部分时间花在 CPU 准备 dispatch 上（GPU 很快
+ * 做完）。如果确实如此，同时跑两个序列应该能把空闲的 dispatch 间隙填满。
+ */
+export async function benchParallel({
+  text,
+  target,
+  maxNewTokens,
+  repeats,
+  parallel,
+  options,
+}: {
+  text: string;
+  target: string;
+  maxNewTokens: number;
+  repeats: number;
+  parallel: number;
+  options?: Record<string, unknown>;
+}): Promise<
+  Array<{ mode: 'seq' | 'par'; ms: number; tokens: number; firstTokenMs: number | null }>
+> {
+  if (!generator) await load();
+  const messages = buildMessages(text, target);
+
+  const runOne = async (tag: 'seq' | 'par') => {
+    let tokens = 0;
+    let firstTokenMs: number | null = null;
+    const t0 = performance.now();
+    const streamer = new TextStreamer(generator.tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      token_callback_function: (generated: bigint[]) => {
+        tokens += generated.length;
+        if (firstTokenMs == null) firstTokenMs = Math.round(performance.now() - t0);
+      },
+      callback_function: () => {},
+    });
+    await generator(messages, {
+      max_new_tokens: maxNewTokens,
+      do_sample: false,
+      streamer,
+      ...options,
+    });
+    return { mode: tag, ms: Math.round(performance.now() - t0), tokens, firstTokenMs };
+  };
+
+  await runOne('seq'); // 预热
+
+  const runs: Array<{
+    mode: 'seq' | 'par';
+    ms: number;
+    tokens: number;
+    firstTokenMs: number | null;
+  }> = [];
+  const runSeqGroup = async () => {
+    const t0 = performance.now();
+    let tokens = 0;
+    for (let i = 0; i < parallel; i++) tokens += (await runOne('seq')).tokens;
+    return {
+      mode: 'seq' as const,
+      ms: Math.round(performance.now() - t0),
+      tokens,
+      firstTokenMs: null,
+    };
+  };
+  const runParGroup = async () => {
+    const t0 = performance.now();
+    const batch = await Promise.all(Array.from({ length: parallel }, () => runOne('par')));
+    return {
+      mode: 'par' as const,
+      ms: Math.round(performance.now() - t0),
+      tokens: batch.reduce((a, b) => a + b.tokens, 0),
+      firstTokenMs: batch[0]!.firstTokenMs,
+    };
+  };
+
+  for (let rep = 0; rep < repeats; rep++) {
+    // 交替顺序，抵消热漂移。
+    if (rep % 2 === 0) {
+      runs.push(await runSeqGroup(), await runParGroup());
+    } else {
+      runs.push(await runParGroup(), await runSeqGroup());
+    }
+  }
+  return runs;
+}
+
+/**
+ * 实验用微基准：同一段输入，交替跑多组 generate 参数。
+ *
+ * 跨 run 的绝对数字受 GPU 热漂移和系统负载影响太大，所以把变体放在
+ * 同一个会话里逐轮交替（A B / B A），只比较同轮内的相对差异。
+ */
+export async function bench({
+  text,
+  target,
+  maxNewTokens,
+  repeats,
+  variants,
+}: {
+  text: string;
+  target: string;
+  maxNewTokens: number;
+  repeats: number;
+  variants: Array<{
+    name: string;
+    options?: Record<string, unknown>;
+    system?: string;
+    withTextCallback?: boolean;
+  }>;
+}): Promise<BenchRun[]> {
+  if (!generator) await load();
+
+  const runOne = async (variant: (typeof variants)[number]): Promise<BenchRun> => {
+    const baseMessages = buildMessages(text, target);
+    const messages = variant.system
+      ? [{ role: 'system' as const, content: variant.system }, baseMessages[1]!]
+      : baseMessages;
+    let tokens = 0;
+    let firstTokenMs: number | null = null;
+    let piece = '';
+    const t0 = performance.now();
+
+    const streamer = new TextStreamer(generator.tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      token_callback_function: (generated: bigint[]) => {
+        tokens += generated.length;
+        if (firstTokenMs == null) firstTokenMs = Math.round(performance.now() - t0);
+      },
+      ...(variant.withTextCallback === false
+        ? {}
+        : {
+            callback_function: (s: string) => {
+              piece += s;
+            },
+          }),
+    });
+
+    await generator(messages, {
+      max_new_tokens: maxNewTokens,
+      do_sample: false,
+      streamer,
+      ...variant.options,
+    });
+
+    return {
+      variant: variant.name,
+      ms: Math.round(performance.now() - t0),
+      tokens,
+      firstTokenMs,
+      chars: piece.length,
+      text: piece,
+    };
+  };
+
+  // 先跑一次丢掉，让着色器 / 分配器进入稳定态。
+  await runOne(variants[0]!);
+
+  const runs: BenchRun[] = [];
+  for (let rep = 0; rep < repeats; rep++) {
+    const order = rep % 2 === 0 ? variants : [...variants].reverse();
+    for (const variant of order) runs.push(await runOne(variant));
+  }
+  return runs;
+}
+
 export async function translate({
   text,
   target,
@@ -249,6 +422,8 @@ export async function translate({
   const prefixState = usePrefix ? await getPrefixState(target) : null;
   let usedPrefixAny = false;
   let out = '';
+  let deltaCount = 0;
+  let firstDeltaMs: number | null = null;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]!;
@@ -266,6 +441,8 @@ export async function translate({
         }
       },
       callback_function: (s: string) => {
+        deltaCount += 1;
+        if (firstDeltaMs == null) firstDeltaMs = Math.round(performance.now() - t0);
         piece += s;
         onDelta?.(s);
       },
@@ -334,5 +511,7 @@ export async function translate({
     ms: Math.round(performance.now() - t0),
     stats: summarizeTimings(timings),
     prefix: usedPrefixAny,
+    deltaCount,
+    firstDeltaMs,
   };
 }

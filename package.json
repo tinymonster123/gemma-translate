@@ -17,7 +17,8 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "probe": "npm run build && node probes/flow-verify.mjs",
-    "perf": "npm run build && node probes/perf-trace.mjs"
+    "perf": "npm run build && node probes/perf-trace.mjs",
+    "bench": "npm run build && node probes/decode-bench.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",

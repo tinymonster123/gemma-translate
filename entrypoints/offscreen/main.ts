@@ -1,5 +1,7 @@
 import { browser } from 'wxt/browser';
 import {
+  bench,
+  benchParallel,
   deviceInfo,
   isReady,
   load,
@@ -12,10 +14,18 @@ import { type EngineEvent, isEngineRequest } from '../../src/shared/protocol';
 
 let state: 'cold' | 'loading' | 'ready' | 'error' = 'cold';
 let lastError: string | null = null;
+/** 由 SW 转发的目标标签页；offscreen 只拿得到 runtime API，触达不到 content script。 */
+let relayTabId: number | null = null;
 
-function broadcast(msg: EngineEvent): void {
+function broadcast(msg: EngineEvent, tabId: number | null = relayTabId): void {
   try {
-    void browser.runtime.sendMessage(msg).catch(() => {});
+    if (tabId != null) {
+      void browser.runtime
+        .sendMessage({ to: 'bg', type: 'engine:relay', tabId, event: msg })
+        .catch(() => {});
+    } else {
+      void browser.runtime.sendMessage(msg).catch(() => {});
+    }
   } catch {
     /* 扩展正在卸载 */
   }
@@ -91,8 +101,9 @@ function ensureLoaded(): Promise<{ cached: boolean; ms: number }> {
   return ensurePromise;
 }
 
-browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!isEngineRequest(msg)) return;
+  const senderTabId = sender.tab?.id ?? null;
 
   // Chrome 的 onMessage 不支持 return Promise；异步回复必须 sendResponse + return true。
   (async () => {
@@ -111,7 +122,8 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
         case 'config':
           setModelHost(msg.modelHost);
-          sendResponse({ ok: true, modelHost: msg.modelHost ?? null });
+          if (msg.relayTabId != null) relayTabId = msg.relayTabId;
+          sendResponse({ ok: true, modelHost: msg.modelHost ?? null, relayTabId });
           return;
 
         case 'ensure': {
@@ -135,7 +147,8 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             text,
             target,
             usePrefix,
-            onDelta: (delta) => broadcast({ from: 'engine', type: 'chunk', reqId, seq, delta }),
+            onDelta: (delta) =>
+              broadcast({ from: 'engine', type: 'chunk', reqId, seq, delta }, senderTabId),
           });
           sendResponse({
             ok: true,
@@ -144,7 +157,32 @@ browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             ms: r.ms,
             stats: r.stats,
             prefix: r.prefix,
+            deltaCount: r.deltaCount,
+            firstDeltaMs: r.firstDeltaMs,
           });
+          return;
+        }
+
+        case 'bench': {
+          const { text, target, maxNewTokens, repeats, variants } = msg;
+          await ensureLoaded();
+          const runs = await bench({ text, target, maxNewTokens, repeats, variants });
+          sendResponse({ ok: true, runs });
+          return;
+        }
+
+        case 'bench-parallel': {
+          const { text, target, maxNewTokens, repeats, parallel, options } = msg;
+          await ensureLoaded();
+          const runs = await benchParallel({
+            text,
+            target,
+            maxNewTokens,
+            repeats,
+            parallel,
+            options,
+          });
+          sendResponse({ ok: true, runs });
           return;
         }
       }

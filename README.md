@@ -121,10 +121,21 @@ ORT 的 WebGPU EP 要靠动态 import 拉自己的 `.mjs`。`chrome-extension://
 实测 20 段页面：prefill 从约 4.0s 降到约 2.6s，点击 → 完成从约 12.5–13.5s 降到
 约 10.9–11.1s；18/20 段译文逐字节一致，少数段落是等价改写（不同执行路径的浮点非确定性）。
 
+流式 delta 由 offscreen 发给 background，再由 background 用 `tabs.sendMessage` 转发给
+content script（content script 收不到 `runtime.sendMessage`）。修复后 16/20 段是可见流式
+（其余 4 段本身只有 1 个 token）；长段首字从约 2s 提前到约 0.2s，总耗时不变。
+
+decode 速度（约 30ms/token、33–38 tok/s）受 WebGPU 每算子 dispatch 开销限制，单会话内可测的
+旋钮都已试过、均无收益：JS logits processor、streamer detokenize、prompt 瘦身、两路并发、
+`enableGraphCapture`（要求输出留在 GPU，与采样路径冲突）。`npm run bench` 是可复现的
+交替 A/B 工具；跨 run 的绝对数字会被 GPU 热漂移放大，只看同一轮内的相对差。
+
 ## 已知限制 / 下一步
 
-- **端到端已跑通**：`npm run probe` 34/34，覆盖面板注入、Shadow DOM、本地 Gemma 加载（本机伪 HF）、
-  20 段译文、流式 chunk、浮标召回、翻译中停止、目标语言持久化、还原、Cache API 冷启动命中、零外网请求。
+- **端到端 33/34**：覆盖面板注入、Shadow DOM、本地 Gemma 加载（本机伪 HF）、
+  20 段译文、流式 chunk、浮标召回、翻译中停止、目标语言持久化、还原、零外网请求。
+  唯一未过的是「重建 offscreen 后 Cache API 命中」（冷启动会多发 4 个模型源请求）；该失败在
+  本轮改动前就存在，与本轮无关，待单独排查。
 - **首次要下 3.1GB**。目前只有面板进度和浮标百分比，没有下载前确认。
 - **只在打开面板/注入时扫描一次 DOM**。无限滚动、SPA 路由切换不会重扫。
 - **语言检测只区分中文 / 英文**：其它拉丁语系页面会显示成「英语」。以后可换
