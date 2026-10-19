@@ -48,7 +48,7 @@ src/
     runtime.ts         pipeline 加载、translate、TextStreamer
 ```
 
-`ext/` 是上一版 popup 架构的源码，只在本地保留（已加入 `.gitignore`）；新构建不读它。
+旧 popup 架构（`ext/`）及其诊断探针已移除；当前构建只读 `entrypoints/` 与 `src/`。
 
 ## 架构
 
